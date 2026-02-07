@@ -248,7 +248,12 @@
       <p class="tagline">Every molt leaves a shell behind</p>
     </header>
     
-    <!-- upload removed -->
+    <div class="upload-zone" id="uploadZone" style="display:none">
+      <div class="upload-icon">📁</div>
+      <div class="upload-text">Drop your manifest.json here</div>
+      <div class="upload-hint">or click to browse</div>
+    </div>
+    <input type="file" id="fileInput" accept=".json" style="display:none">
     
     <div id="content">
       <div class="empty">
@@ -264,6 +269,47 @@
   
   <script>
     const content = document.getElementById('content');
+    
+    // Config: set to true to enable file upload
+    const CONFIG = {
+      allowFileUpload: false
+    };
+    
+    if (CONFIG.allowFileUpload) {
+      const uploadZone = document.getElementById('uploadZone');
+      const fileInput = document.getElementById('fileInput');
+      uploadZone.style.display = '';
+      
+      uploadZone.addEventListener('click', () => fileInput.click());
+      uploadZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadZone.classList.add('dragover');
+      });
+      uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+      uploadZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadZone.classList.remove('dragover');
+        const file = e.dataTransfer.files[0];
+        if (file) loadFile(file);
+      });
+      fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) loadFile(file);
+      });
+    }
+    
+    function loadFile(file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const manifest = JSON.parse(e.target.result);
+          renderManifest(manifest);
+        } catch (err) {
+          alert('Invalid JSON file');
+        }
+      };
+      reader.readAsText(file);
+    }
     
     function renderManifest(manifest) {
       const molts = manifest.molts || [];
