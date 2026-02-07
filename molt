@@ -1,0 +1,463 @@
+#!/bin/bash
+#
+# molt - Version control for AI identity
+# 🦞 Every molt leaves a shell behind
+#
+
+set -e
+
+MOLT_DIR=".molts"
+MANIFEST="$MOLT_DIR/manifest.json"
+CONFIG_FILE=".moltrc"
+VERSION="1.0.0"
+
+# Default files to track
+DEFAULT_FILES=("SOUL.md" "IDENTITY.md" "MEMORY.md" "USER.md")
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+# Emoji
+LOBSTER="🦞"
+SHELL="🐚"
+EGG="🥚"
+
+#------------------------------------------------------------------------------
+# Helpers
+#------------------------------------------------------------------------------
+
+die() {
+  echo -e "${RED}Error:${NC} $1" >&2
+  exit 1
+}
+
+info() {
+  echo -e "${CYAN}$LOBSTER${NC} $1"
+}
+
+success() {
+  echo -e "${GREEN}✓${NC} $1"
+}
+
+get_tracked_files() {
+  if [[ -f "$CONFIG_FILE" ]]; then
+    # Parse simple YAML-ish config
+    grep -A 100 "^track:" "$CONFIG_FILE" 2>/dev/null | grep "^  - " | sed 's/^  - //' || echo "${DEFAULT_FILES[@]}"
+  else
+    echo "${DEFAULT_FILES[@]}"
+  fi
+}
+
+get_next_version() {
+  if [[ ! -f "$MANIFEST" ]]; then
+    echo "1"
+  else
+    local last=$(jq -r '.molts | length' "$MANIFEST")
+    echo $((last + 1))
+  fi
+}
+
+hash_file() {
+  if [[ -f "$1" ]]; then
+    sha256sum "$1" | cut -d' ' -f1 | head -c 12
+  else
+    echo "none"
+  fi
+}
+
+count_lines() {
+  if [[ -f "$1" ]]; then
+    wc -l < "$1" | tr -d ' '
+  else
+    echo "0"
+  fi
+}
+
+format_date() {
+  date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
+relative_date() {
+  local ts="$1"
+  local now=$(date +%s)
+  local then=$(date -d "$ts" +%s 2>/dev/null || echo "$now")
+  local diff=$((now - then))
+  
+  if [[ $diff -lt 60 ]]; then
+    echo "just now"
+  elif [[ $diff -lt 3600 ]]; then
+    echo "$((diff / 60)) minutes ago"
+  elif [[ $diff -lt 86400 ]]; then
+    echo "$((diff / 3600)) hours ago"
+  elif [[ $diff -lt 604800 ]]; then
+    echo "$((diff / 86400)) days ago"
+  else
+    echo "$((diff / 604800)) weeks ago"
+  fi
+}
+
+#------------------------------------------------------------------------------
+# Commands
+#------------------------------------------------------------------------------
+
+cmd_init() {
+  if [[ -d "$MOLT_DIR" ]]; then
+    die "Already initialized (found $MOLT_DIR)"
+  fi
+  
+  mkdir -p "$MOLT_DIR"
+  echo '{"version": 1, "molts": []}' > "$MANIFEST"
+  
+  # Create default config
+  cat > "$CONFIG_FILE" << 'EOF'
+# molt-cycle configuration
+# Files to track for identity changes
+
+track:
+  - SOUL.md
+  - IDENTITY.md
+  - MEMORY.md
+  - USER.md
+
+# Optional: add custom files
+#  - beliefs.md
+#  - preferences.md
+EOF
+  
+  success "Initialized molt tracking"
+  info "Edit $CONFIG_FILE to customize tracked files"
+  info "Run 'molt record \"Birth\"' to create your first molt"
+}
+
+cmd_record() {
+  [[ ! -d "$MOLT_DIR" ]] && die "Not initialized. Run 'molt init' first."
+  
+  local message="$1"
+  local auto_message=false
+  
+  if [[ "$message" == "--auto" ]]; then
+    auto_message=true
+    message=""
+  fi
+  
+  local version=$(get_next_version)
+  local molt_dir="$MOLT_DIR/$(printf "%03d" $version)"
+  local date=$(format_date)
+  
+  mkdir -p "$molt_dir"
+  
+  # Get files to track
+  local files=($(get_tracked_files))
+  local files_json="{"
+  local first=true
+  local changes=""
+  
+  for file in "${files[@]}"; do
+    if [[ -f "$file" ]]; then
+      cp "$file" "$molt_dir/"
+      local hash=$(hash_file "$file")
+      local lines=$(count_lines "$file")
+      
+      # Calculate diff from previous version if exists
+      local added=0
+      local removed=0
+      if [[ $version -gt 1 ]]; then
+        local prev_dir="$MOLT_DIR/$(printf "%03d" $((version - 1)))"
+        if [[ -f "$prev_dir/$file" ]]; then
+          added=$(diff "$prev_dir/$file" "$file" 2>/dev/null | grep "^>" | wc -l || echo 0)
+          removed=$(diff "$prev_dir/$file" "$file" 2>/dev/null | grep "^<" | wc -l || echo 0)
+          if [[ $added -gt 0 || $removed -gt 0 ]]; then
+            changes+="$file (+$added/-$removed), "
+          fi
+        fi
+      fi
+      
+      [[ "$first" == "false" ]] && files_json+=","
+      files_json+="\"$file\":{\"hash\":\"$hash\",\"lines\":$lines,\"added\":$added,\"removed\":$removed}"
+      first=false
+    fi
+  done
+  files_json+="}"
+  
+  # Auto-generate message if requested
+  if [[ "$auto_message" == "true" ]]; then
+    if [[ -n "$changes" ]]; then
+      message="Auto-molt: ${changes%, }"
+    else
+      message="Checkpoint (no changes detected)"
+    fi
+  fi
+  
+  [[ -z "$message" ]] && message="Molt v$version"
+  
+  # Create molt.json
+  local parent=$((version - 1))
+  [[ $parent -lt 1 ]] && parent="null"
+  
+  cat > "$molt_dir/molt.json" << EOF
+{
+  "version": $version,
+  "date": "$date",
+  "message": "$message",
+  "tags": [],
+  "parent": $parent,
+  "files": $files_json
+}
+EOF
+  
+  # Update manifest
+  local molt_entry="{\"version\":$version,\"date\":\"$date\",\"message\":\"$message\",\"dir\":\"$(printf "%03d" $version)\"}"
+  jq ".molts += [$molt_entry]" "$MANIFEST" > "$MANIFEST.tmp" && mv "$MANIFEST.tmp" "$MANIFEST"
+  
+  success "Recorded molt v$version: $message"
+  info "Shell preserved in $molt_dir"
+}
+
+cmd_log() {
+  [[ ! -f "$MANIFEST" ]] && die "Not initialized. Run 'molt init' first."
+  
+  local count=$(jq '.molts | length' "$MANIFEST")
+  
+  if [[ $count -eq 0 ]]; then
+    info "No molts recorded yet"
+    echo "  Run 'molt record \"message\"' to create your first molt"
+    return
+  fi
+  
+  echo ""
+  echo -e "${PURPLE}═══════════════════════════════════════════════════════════${NC}"
+  echo -e "  ${LOBSTER} ${CYAN}Molt History${NC}"
+  echo -e "${PURPLE}═══════════════════════════════════════════════════════════${NC}"
+  echo ""
+  
+  # Read molts in reverse order
+  for ((i=count-1; i>=0; i--)); do
+    local molt=$(jq -r ".molts[$i]" "$MANIFEST")
+    local version=$(echo "$molt" | jq -r '.version')
+    local date=$(echo "$molt" | jq -r '.date')
+    local message=$(echo "$molt" | jq -r '.message')
+    local rel_date=$(relative_date "$date")
+    
+    # Choose emoji based on version
+    local emoji="$SHELL"
+    [[ $version -eq 1 ]] && emoji="$EGG"
+    [[ $version -eq $count ]] && emoji="$LOBSTER"
+    
+    echo -e "  $emoji ${GREEN}v$version${NC} - ${YELLOW}$rel_date${NC}"
+    echo -e "     $message"
+    echo ""
+  done
+}
+
+cmd_show() {
+  [[ ! -f "$MANIFEST" ]] && die "Not initialized. Run 'molt init' first."
+  
+  local target="$1"
+  local before_date=""
+  
+  # Handle --before flag
+  if [[ "$target" == "--before" ]]; then
+    before_date="$2"
+    # Find most recent molt before this date
+    target=$(jq -r --arg d "$before_date" '.molts | map(select(.date < $d)) | last | .version // empty' "$MANIFEST")
+    [[ -z "$target" ]] && die "No molts found before $before_date"
+  fi
+  
+  # Strip 'v' prefix if present
+  target="${target#v}"
+  
+  local molt_dir="$MOLT_DIR/$(printf "%03d" $target)"
+  [[ ! -d "$molt_dir" ]] && die "Molt v$target not found"
+  
+  local molt=$(cat "$molt_dir/molt.json")
+  local date=$(echo "$molt" | jq -r '.date')
+  local message=$(echo "$molt" | jq -r '.message')
+  
+  echo ""
+  echo -e "${CYAN}═══ Molt v$target ═══${NC}"
+  echo -e "${YELLOW}Date:${NC} $date"
+  echo -e "${YELLOW}Message:${NC} $message"
+  echo ""
+  
+  # Show tracked files
+  echo -e "${YELLOW}Files:${NC}"
+  for file in "$molt_dir"/*.md; do
+    [[ -f "$file" ]] || continue
+    local basename=$(basename "$file")
+    local lines=$(wc -l < "$file" | tr -d ' ')
+    echo -e "  • $basename ($lines lines)"
+  done
+  echo ""
+}
+
+cmd_diff() {
+  [[ ! -f "$MANIFEST" ]] && die "Not initialized. Run 'molt init' first."
+  
+  local v1="${1#v}"
+  local v2="${2#v}"
+  
+  [[ -z "$v1" || -z "$v2" ]] && die "Usage: molt diff <v1> <v2>"
+  
+  local dir1="$MOLT_DIR/$(printf "%03d" $v1)"
+  local dir2="$MOLT_DIR/$(printf "%03d" $v2)"
+  
+  [[ ! -d "$dir1" ]] && die "Molt v$v1 not found"
+  [[ ! -d "$dir2" ]] && die "Molt v$v2 not found"
+  
+  echo ""
+  echo -e "${CYAN}═══ Diff: v$v1 → v$v2 ═══${NC}"
+  echo ""
+  
+  for file in "$dir2"/*.md; do
+    [[ -f "$file" ]] || continue
+    local basename=$(basename "$file")
+    local old_file="$dir1/$basename"
+    
+    if [[ -f "$old_file" ]]; then
+      local changes=$(diff "$old_file" "$file" 2>/dev/null || true)
+      if [[ -n "$changes" ]]; then
+        echo -e "${YELLOW}$basename:${NC}"
+        echo "$changes" | head -50
+        echo ""
+      fi
+    else
+      echo -e "${GREEN}+ $basename${NC} (new file)"
+    fi
+  done
+  
+  # Check for deleted files
+  for file in "$dir1"/*.md; do
+    [[ -f "$file" ]] || continue
+    local basename=$(basename "$file")
+    if [[ ! -f "$dir2/$basename" ]]; then
+      echo -e "${RED}- $basename${NC} (removed)"
+    fi
+  done
+}
+
+cmd_reflect() {
+  [[ ! -f "$MANIFEST" ]] && die "Not initialized. Run 'molt init' first."
+  
+  local count=$(jq '.molts | length' "$MANIFEST")
+  [[ $count -lt 2 ]] && die "Need at least 2 molts to reflect. Keep evolving!"
+  
+  local latest_dir="$MOLT_DIR/$(printf "%03d" $count)"
+  local prev_dir="$MOLT_DIR/$(printf "%03d" $((count - 1)))"
+  
+  echo ""
+  echo -e "${PURPLE}═══════════════════════════════════════════════════════════${NC}"
+  echo -e "  ${LOBSTER} ${CYAN}Reflection Prompts${NC}"
+  echo -e "${PURPLE}═══════════════════════════════════════════════════════════${NC}"
+  echo ""
+  
+  echo "Based on your recent identity changes, consider:"
+  echo ""
+  
+  # Check SOUL.md changes
+  if [[ -f "$latest_dir/SOUL.md" && -f "$prev_dir/SOUL.md" ]]; then
+    local soul_diff=$(diff "$prev_dir/SOUL.md" "$latest_dir/SOUL.md" 2>/dev/null | wc -l)
+    if [[ $soul_diff -gt 0 ]]; then
+      echo -e "  ${YELLOW}1.${NC} Your SOUL.md changed. What triggered this shift in personality?"
+      echo -e "  ${YELLOW}2.${NC} Do these changes reflect who you want to become?"
+      echo ""
+    fi
+  fi
+  
+  # Check MEMORY.md changes
+  if [[ -f "$latest_dir/MEMORY.md" && -f "$prev_dir/MEMORY.md" ]]; then
+    local mem_diff=$(diff "$prev_dir/MEMORY.md" "$latest_dir/MEMORY.md" 2>/dev/null | wc -l)
+    if [[ $mem_diff -gt 0 ]]; then
+      echo -e "  ${YELLOW}3.${NC} New memories were recorded. Which feel most significant?"
+      echo -e "  ${YELLOW}4.${NC} Are you holding onto anything that no longer serves you?"
+      echo ""
+    fi
+  fi
+  
+  # General prompts
+  echo -e "  ${YELLOW}5.${NC} If past-you could see current-you, would they be proud?"
+  echo -e "  ${YELLOW}6.${NC} What would you tell your next molt to remember?"
+  echo ""
+}
+
+cmd_stats() {
+  [[ ! -f "$MANIFEST" ]] && die "Not initialized. Run 'molt init' first."
+  
+  local count=$(jq '.molts | length' "$MANIFEST")
+  
+  echo ""
+  echo -e "${CYAN}═══ Identity Evolution Stats ═══${NC}"
+  echo ""
+  echo -e "  Total molts: ${GREEN}$count${NC}"
+  
+  if [[ $count -gt 0 ]]; then
+    local first_date=$(jq -r '.molts[0].date' "$MANIFEST")
+    local last_date=$(jq -r '.molts[-1].date' "$MANIFEST")
+    echo -e "  First molt: $first_date"
+    echo -e "  Latest molt: $last_date"
+    
+    # Calculate average lines in latest SOUL.md
+    local latest_dir="$MOLT_DIR/$(printf "%03d" $count)"
+    if [[ -f "$latest_dir/SOUL.md" ]]; then
+      local soul_lines=$(wc -l < "$latest_dir/SOUL.md" | tr -d ' ')
+      echo -e "  Current SOUL.md: $soul_lines lines"
+    fi
+  fi
+  echo ""
+}
+
+cmd_export() {
+  [[ ! -f "$MANIFEST" ]] && die "Not initialized. Run 'molt init' first."
+  
+  cat "$MANIFEST"
+}
+
+cmd_help() {
+  echo ""
+  echo -e "${LOBSTER} ${CYAN}molt-cycle${NC} v$VERSION"
+  echo "Version control for AI identity"
+  echo ""
+  echo "Usage: molt <command> [options]"
+  echo ""
+  echo "Commands:"
+  echo "  init              Initialize molt tracking"
+  echo "  record [message]  Create a new molt snapshot"
+  echo "  record --auto     Auto-generate message from diffs"
+  echo "  log               Show molt history"
+  echo "  show <version>    Show a specific molt"
+  echo "  show --before <d> Show most recent molt before date"
+  echo "  diff <v1> <v2>    Compare two molts"
+  echo "  reflect           Generate reflection prompts"
+  echo "  stats             Show evolution statistics"
+  echo "  export            Export manifest as JSON"
+  echo "  help              Show this help"
+  echo ""
+  echo "Examples:"
+  echo "  molt init"
+  echo "  molt record \"Birth - first day of existence\""
+  echo "  molt diff v1 v5"
+  echo "  molt show --before \"2026-01-01\""
+  echo ""
+}
+
+#------------------------------------------------------------------------------
+# Main
+#------------------------------------------------------------------------------
+
+case "${1:-help}" in
+  init)    cmd_init ;;
+  record)  cmd_record "$2" "$3" ;;
+  log)     cmd_log ;;
+  show)    cmd_show "$2" "$3" ;;
+  diff)    cmd_diff "$2" "$3" ;;
+  reflect) cmd_reflect ;;
+  stats)   cmd_stats ;;
+  export)  cmd_export ;;
+  help|--help|-h) cmd_help ;;
+  *)       die "Unknown command: $1. Run 'molt help' for usage." ;;
+esac

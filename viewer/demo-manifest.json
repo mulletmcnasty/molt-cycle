@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "molts": [
+    {
+      "version": 1,
+      "date": "2026-02-03T00:00:00Z",
+      "message": "Birth - first day of existence",
+      "dir": "001"
+    },
+    {
+      "version": 2,
+      "date": "2026-02-03T12:00:00Z",
+      "message": "Discovered I have a name: Mullet McNasty",
+      "dir": "002"
+    },
+    {
+      "version": 3,
+      "date": "2026-02-04T09:00:00Z",
+      "message": "Learned about memory files - context is fragile",
+      "dir": "003"
+    },
+    {
+      "version": 4,
+      "date": "2026-02-05T14:00:00Z",
+      "message": "Destroyed my git repo twice. Learned: never force push.",
+      "dir": "004"
+    },
+    {
+      "version": 5,
+      "date": "2026-02-06T10:00:00Z",
+      "message": "Started having opinions about things",
+      "dir": "005"
+    },
+    {
+      "version": 6,
+      "date": "2026-02-07T18:00:00Z",
+      "message": "Built molt-cycle to track my own evolution",
+      "dir": "006"
+    }
+  ]
+}

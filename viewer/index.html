@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🦞 molt-cycle viewer</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --card: #12121a;
+      --border: #1e1e2e;
+      --text: #e4e4ed;
+      --muted: #6b6b7a;
+      --accent: #f97316;
+      --accent-glow: rgba(249, 115, 22, 0.3);
+      --shell: #22c55e;
+      --egg: #fbbf24;
+    }
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+    
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 3rem 2rem;
+    }
+    
+    header {
+      text-align: center;
+      margin-bottom: 4rem;
+    }
+    
+    .logo {
+      font-size: 4rem;
+      margin-bottom: 1rem;
+    }
+    
+    h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), #fb923c);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 0.5rem;
+    }
+    
+    .tagline {
+      color: var(--muted);
+      font-style: italic;
+    }
+    
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: 1rem;
+      padding: 3rem 2rem;
+      text-align: center;
+      margin-bottom: 3rem;
+      transition: all 0.3s;
+      cursor: pointer;
+    }
+    
+    .upload-zone:hover {
+      border-color: var(--accent);
+      background: rgba(249, 115, 22, 0.05);
+    }
+    
+    .upload-zone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-glow);
+    }
+    
+    .upload-icon { font-size: 2rem; margin-bottom: 1rem; }
+    .upload-text { color: var(--muted); }
+    .upload-hint { font-size: 0.85rem; color: var(--muted); margin-top: 0.5rem; }
+    
+    /* Timeline */
+    .timeline {
+      position: relative;
+      padding-left: 3rem;
+    }
+    
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 1rem;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: linear-gradient(to bottom, var(--egg), var(--shell), var(--accent));
+    }
+    
+    .molt {
+      position: relative;
+      margin-bottom: 2rem;
+      padding: 1.5rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      transition: all 0.3s;
+    }
+    
+    .molt:hover {
+      transform: translateX(4px);
+      border-color: var(--accent);
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
+    
+    .molt::before {
+      content: '';
+      position: absolute;
+      left: -2.35rem;
+      top: 1.75rem;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--shell);
+      border: 3px solid var(--bg);
+    }
+    
+    .molt:first-child::before { background: var(--egg); }
+    .molt:last-child::before { background: var(--accent); }
+    
+    .molt-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 0.75rem;
+    }
+    
+    .molt-version {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--accent);
+      background: rgba(249, 115, 22, 0.1);
+      padding: 0.25rem 0.75rem;
+      border-radius: 2rem;
+    }
+    
+    .molt-date {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    
+    .molt-message {
+      font-size: 1.1rem;
+      font-weight: 500;
+      margin-bottom: 0.75rem;
+    }
+    
+    .molt-files {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    
+    .molt-file {
+      font-size: 0.75rem;
+      padding: 0.25rem 0.5rem;
+      background: var(--bg);
+      border-radius: 0.25rem;
+      color: var(--muted);
+    }
+    
+    .molt-file .change {
+      color: var(--shell);
+    }
+    
+    .molt-file .change.removed {
+      color: #ef4444;
+    }
+    
+    /* Stats */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 1rem;
+      margin-bottom: 3rem;
+    }
+    
+    .stat {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1.25rem;
+      text-align: center;
+    }
+    
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    
+    .stat-label {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    
+    /* Empty state */
+    .empty {
+      text-align: center;
+      padding: 4rem 2rem;
+      color: var(--muted);
+    }
+    
+    .empty-icon {
+      font-size: 4rem;
+      margin-bottom: 1rem;
+      opacity: 0.5;
+    }
+    
+    /* Hidden file input */
+    #fileInput { display: none; }
+    
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 3rem 0 1rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    
+    @media (max-width: 640px) {
+      .container { padding: 1.5rem 1rem; }
+      .timeline { padding-left: 2.5rem; }
+      .molt::before { left: -2.1rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">🦞</div>
+      <h1>molt-cycle</h1>
+      <p class="tagline">Every molt leaves a shell behind</p>
+    </header>
+    
+    <div class="upload-zone" id="uploadZone">
+      <div class="upload-icon">📁</div>
+      <div class="upload-text">Drop your manifest.json here</div>
+      <div class="upload-hint">or click to browse</div>
+    </div>
+    
+    <input type="file" id="fileInput" accept=".json">
+    
+    <div id="content">
+      <div class="empty">
+        <div class="empty-icon">🐚</div>
+        <p>Load a molt manifest to view your identity evolution</p>
+      </div>
+    </div>
+    
+    <footer>
+      <a href="https://github.com/mulletmcnasty/molt-cycle">molt-cycle</a> by Mullet McNasty
+    </footer>
+  </div>
+  
+  <script>
+    const uploadZone = document.getElementById('uploadZone');
+    const fileInput = document.getElementById('fileInput');
+    const content = document.getElementById('content');
+    
+    uploadZone.addEventListener('click', () => fileInput.click());
+    
+    uploadZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uploadZone.classList.add('dragover');
+    });
+    
+    uploadZone.addEventListener('dragleave', () => {
+      uploadZone.classList.remove('dragover');
+    });
+    
+    uploadZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadZone.classList.remove('dragover');
+      const file = e.dataTransfer.files[0];
+      if (file) loadFile(file);
+    });
+    
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) loadFile(file);
+    });
+    
+    function loadFile(file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const manifest = JSON.parse(e.target.result);
+          renderManifest(manifest);
+        } catch (err) {
+          alert('Invalid JSON file');
+        }
+      };
+      reader.readAsText(file);
+    }
+    
+    function renderManifest(manifest) {
+      const molts = manifest.molts || [];
+      
+      if (molts.length === 0) {
+        content.innerHTML = `
+          <div class="empty">
+            <div class="empty-icon">🥚</div>
+            <p>No molts recorded yet. You're still in your shell!</p>
+          </div>
+        `;
+        return;
+      }
+      
+      // Calculate stats
+      const firstDate = new Date(molts[0].date);
+      const lastDate = new Date(molts[molts.length - 1].date);
+      const daysBetween = Math.floor((lastDate - firstDate) / (1000 * 60 * 60 * 24));
+      
+      let html = `
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-value">${molts.length}</div>
+            <div class="stat-label">Total Molts</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">${daysBetween || '< 1'}</div>
+            <div class="stat-label">Days Evolving</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">${daysBetween > 0 ? (molts.length / daysBetween * 7).toFixed(1) : molts.length}</div>
+            <div class="stat-label">Molts / Week</div>
+          </div>
+        </div>
+        
+        <div class="timeline">
+      `;
+      
+      // Render molts in reverse order (newest first)
+      for (let i = molts.length - 1; i >= 0; i--) {
+        const molt = molts[i];
+        const date = new Date(molt.date).toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        
+        html += `
+          <div class="molt">
+            <div class="molt-header">
+              <span class="molt-version">v${molt.version}</span>
+              <span class="molt-date">${date}</span>
+            </div>
+            <div class="molt-message">${escapeHtml(molt.message)}</div>
+          </div>
+        `;
+      }
+      
+      html += '</div>';
+      content.innerHTML = html;
+    }
+    
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+    
+    // Check for demo manifest
+    fetch('demo-manifest.json')
+      .then(r => r.json())
+      .then(manifest => {
+        if (manifest.molts && manifest.molts.length > 0) {
+          renderManifest(manifest);
+        }
+      })
+      .catch(() => {});
+  </script>
+</body>
+</html>
